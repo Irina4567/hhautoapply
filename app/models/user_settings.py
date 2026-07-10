@@ -56,8 +56,16 @@ class UserSettings(BaseModel):
     # accept_handicapped и т.п. — опционально, для инклюзивного поиска.
     health_features: list[str] = Field(default_factory=list)
 
-    # --- Автоотклик ---
+    # --- Письма / ИИ ---
     ai_enabled: bool = False             # ИИ-персонализация писем
+    ai_custom_prompt: str = ""           # свой промт для ИИ-писем (пусто = стандартный)
+    # Режим сопроводительных писем:
+    #   always   — всегда прикладывать письмо (шаблон или ИИ)
+    #   required — только когда вакансия требует письмо
+    #   off      — не прикладывать письмо
+    letter_mode: str = "always"
+
+    # --- Автоотклик ---
     daily_limit: int = 50                # лимит откликов в день (free=50, paid выше)
     # Окно откликов по МСК (по умолчанию 9-21, настраивается).
     apply_hour_start: int = 9

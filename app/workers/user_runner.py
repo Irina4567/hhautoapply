@@ -29,14 +29,23 @@ log = structlog.get_logger()
 _REFUSAL = ("не могу", "as an ai", "извините", "не имею возможности")
 
 
-async def _build_letter(item: dict, title: str, ai_enabled: bool, resume_text: str) -> str:
-    """ИИ-письмо для ai_enabled (с резюме пользователя), иначе шаблон.
-    Откат на шаблон, если ИИ вернул пусто/отказ."""
-    if ai_enabled and resume_text:
+async def _build_letter(item: dict, title: str, st, resume_text: str) -> str:
+    """Собрать письмо по настройкам режима:
+      off      — без письма ("")
+      required — письмо только если вакансия его требует
+      always   — всегда; ИИ-персонализация при ai_enabled (иначе шаблон)."""
+    mode = getattr(st, "letter_mode", "always")
+    if mode == "off":
+        return ""
+    if mode == "required" and not item.get("response_letter_required"):
+        return ""
+    if st.ai_enabled and resume_text:
         snip = item.get("snippet") or {}
         desc = " ".join(x for x in (snip.get("responsibility"), snip.get("requirement")) if x)
         try:
-            text, _, _ = await claude_ai.generate_cover_letter(title, desc, resume=resume_text)
+            text, _, _ = await claude_ai.generate_cover_letter(
+                title, desc, resume=resume_text, custom_prompt=(st.ai_custom_prompt or None)
+            )
             text = (text or "").strip()
             low = text.lower()
             if text and len(text) >= 40 and not any(m in low for m in _REFUSAL):
@@ -125,7 +134,7 @@ async def run_user_cycle(user_id: int) -> int:
                 await session.refresh(vac)
             vac_id = vac.id
 
-        letter = await _build_letter(item, title, st.ai_enabled, resume_text)
+        letter = await _build_letter(item, title, st, resume_text)
         try:
             result, info = await client.apply(vid, letter)
         except Exception as e:

@@ -180,8 +180,12 @@ class ClaudeAI:
                 "_output_tokens": out_tok,
             }
 
-    async def generate_cover_letter(self, vacancy_title: str, vacancy_description: str, company_name: str = "", resume: str | None = None) -> tuple[str, int, int]:
-        system = SYSTEM_COVER_LETTER.format(resume=resume or settings.resume_text)
+    async def generate_cover_letter(self, vacancy_title: str, vacancy_description: str, company_name: str = "", resume: str | None = None, custom_prompt: str | None = None) -> tuple[str, int, int]:
+        resume_text = resume or settings.resume_text
+        if custom_prompt:
+            system = f"{custom_prompt}\n\nПрофиль кандидата:\n{resume_text}"
+        else:
+            system = SYSTEM_COVER_LETTER.format(resume=resume_text)
         user_msg = f"""Напиши сопроводительное письмо для вакансии:
 
 Компания: {company_name}
