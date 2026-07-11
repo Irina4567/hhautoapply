@@ -87,6 +87,9 @@ class ClaudeAI:
         headers = {
             "Authorization": f"Bearer {settings.ai_api_key}",
             "Content-Type": "application/json",
+            # Браузерный UA — иначе Cloudflare-релеи (tonwave) отвечают 1010.
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                          "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36",
         }
         payload = {
             "model": settings.ai_model,

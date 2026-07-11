@@ -87,13 +87,13 @@ async def _load(session, cb_or_msg):
     return await get_or_create_user(session, tg.id, tg.username)
 
 
-def _summary(s: UserSettings) -> str:
+def _summary(s: UserSettings, tasks_line: str = "") -> str:
     areas = ", ".join(AREA_NAMES.get(a, str(a)) for a in s.areas) or "не задан"
     fmt = ", ".join(WORK_FORMAT[c] for c in s.work_format) or "любой"
     exp = ", ".join(EXPERIENCE[c] for c in s.experience) or "любой"
     emp = ", ".join(EMPLOYMENT[c] for c in s.employment) or "любая"
     return (
-        f"🔑 Ключевые слова: <b>{s.search_text or '⚠️ не задано (укажи!)'}</b>\n"
+        f"🎯 Задачи (ключевые слова): <b>{tasks_line or '⚠️ не задано (укажи!)'}</b>\n"
         f"📍 Регион: <b>{areas}</b>\n"
         f"💻 Формат: <b>{fmt}</b>\n"
         f"📈 Опыт: <b>{exp}</b>\n"
@@ -117,27 +117,133 @@ def _main_kb(is_active: bool, s: UserSettings) -> InlineKeyboardMarkup:
            callback_data="task:toggle_bump")],
         [b(text=f"🎯 Умный отбор (ИИ): {('от ' + str(s.ai_score_min) + '%') if s.ai_score_enabled else 'выкл'}",
            callback_data="task:score")],
-        [b(text="🔑 Ключевые слова", callback_data="task:input:search_text"),
-         b(text="📍 Регион", callback_data="task:input:areas")],
+        [b(text="📋 Все задачи", callback_data="task:tasks"),
+         b(text="➕ Новая задача", callback_data="task:newtask")],
+        [b(text="📍 Регион", callback_data="task:input:areas"),
+         b(text="💰 Зарплата", callback_data="task:input:salary_min")],
         [b(text="💻 Формат", callback_data="task:sub:fmt"),
          b(text="📈 Опыт", callback_data="task:sub:exp")],
         [b(text="🕒 Занятость", callback_data="task:sub:emp"),
-         b(text="💰 Зарплата", callback_data="task:input:salary_min")],
-        [b(text="🚫 Исключения", callback_data="task:input:excluded_text"),
-         b(text="📊 Лимит/день", callback_data="task:input:daily_limit")],
-        [b(text="⏰ Расписание", callback_data="task:input:window"),
-         b(text="✉️ Письма", callback_data="task:letters")],
+         b(text="🚫 Исключения", callback_data="task:input:excluded_text")],
+        [b(text="📊 Лимит/день", callback_data="task:input:daily_limit"),
+         b(text="⏰ Расписание", callback_data="task:input:window")],
+        [b(text="✉️ Письма", callback_data="task:letters")],
     ])
 
 
+async def _tasks_line(user_id: int) -> str:
+    from app.services.search_tasks import list_tasks
+    async with async_session() as session:
+        tasks = await list_tasks(session, user_id)
+    if not tasks:
+        return ""
+    parts = [f"{t.keyword}{'' if t.is_active else ' (выкл)'}" for t in tasks]
+    return " · ".join(parts)
+
+
 async def _show_main(target, s: UserSettings, is_active: bool, edit=False):
-    text = "⚙️ <b>Задача автоотклика</b>\n\n" + _summary(s)
+    uid = target.from_user.id
+    tasks_line = await _tasks_line(uid)
+    text = "⚙️ <b>Задача автоотклика</b>\n\n" + _summary(s, tasks_line)
     kb = _main_kb(is_active, s)
     if edit and isinstance(target, CallbackQuery):
         await target.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
     else:
         msg = target.message if isinstance(target, CallbackQuery) else target
         await msg.answer(text, reply_markup=kb, parse_mode="HTML")
+
+
+# ── Задачи поиска (несколько ключевых слов) ──
+class NewTaskSG(StatesGroup):
+    keyword = State()
+
+
+async def _tasks_view(cb: CallbackQuery):
+    from app.services.search_tasks import list_tasks, ensure_seeded
+    b = InlineKeyboardButton
+    async with async_session() as session:
+        user = await _load(session, cb)
+        await ensure_seeded(session, user)
+        tasks = await list_tasks(session, user.id)
+    rows = []
+    for t in tasks:
+        mark = "🟢" if t.is_active else "⚪️"
+        rows.append([b(text=f"{mark} {t.keyword[:36]}", callback_data=f"task:tgl:{t.id}"),
+                     b(text="🗑", callback_data=f"task:del:{t.id}")])
+    rows.append([b(text="➕ Новая задача", callback_data="task:newtask")])
+    rows.append([b(text="⬅️ Назад", callback_data="task:menu")])
+    text = (
+        "📋 <b>Все задачи</b>\n\n"
+        "Каждая задача — одно название вакансии; ищем строго по нему. "
+        "Автоотклик идёт по всем 🟢 активным.\n"
+        "Тап по задаче — вкл/выкл, 🗑 — удалить."
+    ) if tasks else (
+        "📋 <b>Задачи</b>\n\nПока пусто. Добавь первую — «➕ Новая задача»."
+    )
+    await cb.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows), parse_mode="HTML")
+
+
+@router.callback_query(F.data == "task:tasks")
+async def cb_tasks(cb: CallbackQuery, **kw):
+    await _tasks_view(cb)
+    await cb.answer()
+
+
+@router.callback_query(F.data.startswith("task:tgl:"))
+async def cb_task_toggle(cb: CallbackQuery, **kw):
+    from app.models.search_task import SearchTask
+    tid = int(cb.data.split(":")[2])
+    async with async_session() as session:
+        user = await _load(session, cb)
+        t = await session.get(SearchTask, tid)
+        if t and t.user_id == user.id:
+            t.is_active = not t.is_active
+            await session.commit()
+    await _tasks_view(cb)
+    await cb.answer()
+
+
+@router.callback_query(F.data.startswith("task:del:"))
+async def cb_task_del(cb: CallbackQuery, **kw):
+    from app.models.search_task import SearchTask
+    tid = int(cb.data.split(":")[2])
+    async with async_session() as session:
+        user = await _load(session, cb)
+        t = await session.get(SearchTask, tid)
+        if t and t.user_id == user.id:
+            await session.delete(t)
+            await session.commit()
+    await _tasks_view(cb)
+    await cb.answer("Удалено")
+
+
+@router.callback_query(F.data == "task:newtask")
+async def cb_newtask(cb: CallbackQuery, state: FSMContext, **kw):
+    await state.set_state(NewTaskSG.keyword)
+    await cb.message.answer(
+        "➕ <b>Новая задача</b>\n\nПришли ОДНО название должности для поиска "
+        "(например <code>системный аналитик</code>). Будем искать вакансии строго "
+        "с этим названием.\n\nОтмена: /task",
+        parse_mode="HTML",
+    )
+    await cb.answer()
+
+
+@router.message(NewTaskSG.keyword)
+async def on_newtask(message: Message, state: FSMContext, **kw):
+    from app.models.search_task import SearchTask
+    kw_text = (message.text or "").strip()
+    await state.clear()
+    if not kw_text or kw_text.startswith("/"):
+        await message.answer("Пусто. Добавить задачу: 📋 Задача → ➕ Новая задача.")
+        return
+    async with async_session() as session:
+        user = await _load(session, message)
+        session.add(SearchTask(user_id=user.id, keyword=kw_text, is_active=True))
+        await session.commit()
+        s, active = user.get_settings(), user.is_active
+    await message.answer(f"✅ Задача добавлена: <b>{kw_text}</b>", parse_mode="HTML")
+    await _show_main(message, s, active)
 
 
 @router.message(Command("start"))
@@ -440,7 +546,10 @@ async def cb_acc_logout_yes(cb: CallbackQuery, **kw):
 async def btn_support(message: Message, **kw):
     await send_photo_or_text(
         message, "support",
-        f"🆘 <b>Поддержка</b>\n\nПо любым вопросам пиши: {settings.support_contact}",
+        "🆘 <b>Поддержка</b>\n\n"
+        "⚡️ Если что-то работает не так — сначала перезапусти бота командой /start, "
+        "это решает большинство мелких сбоев.\n\n"
+        f"Не помогло — пиши: {settings.support_contact}",
     )
 
 

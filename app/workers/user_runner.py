@@ -138,8 +138,12 @@ async def run_user_cycle(user_id: int) -> int:
         if not user or not user.is_active:
             return 0
         st = user.get_settings()
+        # Ключевые слова из активных задач (fallback — старое поле search_text).
+        from app.services.search_tasks import ensure_seeded, active_keywords
+        await ensure_seeded(session, user)
+        phrases = await active_keywords(session, user.id) or st.search_phrases()
         # Без ключевых слов hh вернёт всё подряд — не откликаемся во избежание спама.
-        if not (st.search_text or "").strip():
+        if not phrases:
             log.info("user_no_keywords_skip", user_id=user.id)
             return 0
         if not _within_window(st.apply_hour_start, st.apply_hour_end):
@@ -150,14 +154,14 @@ async def run_user_cycle(user_id: int) -> int:
     for ctx in contexts:
         ctx["user_id"] = user_id
         try:
-            total += await run_account_cycle(user_id, st, ctx)
+            total += await run_account_cycle(user_id, st, ctx, phrases)
         except Exception as e:
             log.error("account_cycle_error", user_id=user_id, ref=ctx["ref"], error=str(e))
     log.info("user_cycle_done", user_id=user_id, applied=total, accounts=len(contexts))
     return total
 
 
-async def run_account_cycle(user_id: int, st, ctx: dict) -> int:
+async def run_account_cycle(user_id: int, st, ctx: dict, phrases: list[str]) -> int:
     """Один цикл автоотклика для одного hh-аккаунта (свой дедуп и лимит)."""
     ref = ctx["ref"]
     resume_text = ctx["resume_text"]
@@ -172,7 +176,7 @@ async def run_account_cycle(user_id: int, st, ctx: dict) -> int:
         resume_id=ctx["resume_id"], expires_at=ctx["expires_at"],
     )
     base_params = st.to_hh_params()
-    phrases = st.search_phrases() or [""]
+    phrases = phrases or [""]
     scored = 0
     seen = 0
     stop = False
