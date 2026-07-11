@@ -132,6 +132,49 @@ class HHUserClient:
             log.warning("bump_resume_error", error=str(e))
             return False
 
+    async def hide_rejections(self, max_pages: int = 20) -> dict:
+        """Скрыть отклики со статусом «отказ» (discard) в списке откликов hh.
+
+        Возвращает {"hidden": N, "checked": M}. hh помечает отказ работодателя
+        state.id == 'discard'; DELETE /negotiations/{id} убирает его из списка.
+        """
+        if not await self.ensure_token():
+            return {"hidden": 0, "checked": 0, "error": "no_token"}
+        headers = {"Authorization": f"Bearer {self.access_token}", "User-Agent": UA}
+        hidden = checked = 0
+        try:
+            async with httpx.AsyncClient(timeout=25) as c:
+                for page in range(max_pages):
+                    r = await c.get(
+                        f"{API}/negotiations",
+                        headers=headers,
+                        params={"page": page, "per_page": 100, "order_by": "updated"},
+                    )
+                    if r.status_code != 200:
+                        break
+                    data = r.json() or {}
+                    items = data.get("items") or []
+                    if not items:
+                        break
+                    for it in items:
+                        checked += 1
+                        state = ((it.get("state") or {}).get("id") or "").lower()
+                        if state != "discard":
+                            continue
+                        nid = str(it.get("id") or "")
+                        if not nid:
+                            continue
+                        dr = await c.delete(f"{API}/negotiations/{nid}", headers=headers)
+                        if dr.status_code in (200, 204):
+                            hidden += 1
+                    if page + 1 >= (data.get("pages") or 1):
+                        break
+        except Exception as e:
+            log.warning("hide_rejections_error", error=str(e))
+            return {"hidden": hidden, "checked": checked, "error": str(e)[:120]}
+        log.info("hide_rejections_done", hidden=hidden, checked=checked)
+        return {"hidden": hidden, "checked": checked}
+
     async def apply(self, vacancy_id: str, message: str = "") -> tuple[bool | str, dict]:
         """Откликнуться на вакансию токеном пользователя."""
         if not self.resume_id:

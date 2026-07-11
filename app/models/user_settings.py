@@ -15,6 +15,8 @@
 """
 from __future__ import annotations
 
+import re
+
 from pydantic import BaseModel, Field
 
 
@@ -82,11 +84,27 @@ class UserSettings(BaseModel):
     apply_delay_min: int = 3
     apply_delay_max: int = 12
 
+    def _build_query(self) -> str:
+        """Собрать корректный текстовый запрос hh из ключевых слов.
+
+        Несколько фраз пользователь пишет через запятую/слэш/перенос строки —
+        превращаем их в OR-запрос, а многословные фразы берём в кавычки (точная
+        фраза), чтобы hh не подтягивал «Системный администратор» на «системный
+        аналитик». Одна фраза без разделителей — тоже в кавычки, если многословная.
+        """
+        raw = (self.search_text or "").strip()
+        if not raw:
+            return ""
+        parts = [p.strip() for p in re.split(r"[,/\n]+", raw) if p.strip()]
+        terms = [f'"{p}"' if " " in p else p for p in parts]
+        return " OR ".join(terms) if len(terms) > 1 else terms[0]
+
     def to_hh_params(self) -> dict:
         """Собрать параметры для поиска вакансий hh /vacancies."""
         params: dict = {}
-        if self.search_text:
-            params["text"] = self.search_text
+        query = self._build_query()
+        if query:
+            params["text"] = query
         if self.search_fields:
             params["search_field"] = self.search_fields
         if self.areas:

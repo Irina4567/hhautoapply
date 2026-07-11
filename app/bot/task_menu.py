@@ -22,6 +22,7 @@ from app.config import settings
 from app.database import async_session
 from app.bot.media import send_photo_or_text
 from app.models.application import Application, ApplicationStatus
+from app.models.vacancy import Vacancy, VacancyStatus
 from app.models.user_settings import UserSettings
 from app.services.user_service import get_or_create_user
 
@@ -206,13 +207,31 @@ async def btn_stats(message: Message, **kw):
                 func.date(Application.created_at) == func.current_date())
         )).scalar() or 0
         active = user.is_active
-    await message.answer(
-        f"📊 <b>Статистика</b>\n\n"
-        f"Откликов всего: <b>{total}</b>\n"
-        f"Сегодня: <b>{today}</b>\n"
+        s = user.get_settings()
+        # Отсеяно умным отбором: вакансии с проставленной ИИ-оценкой и статусом REJECTED.
+        filtered = (await session.execute(
+            select(func.count(Vacancy.id)).where(
+                Vacancy.user_id == user.id,
+                Vacancy.status == VacancyStatus.REJECTED,
+                Vacancy.ai_score.is_not(None))
+        )).scalar() or 0
+        scored_total = (await session.execute(
+            select(func.count(Vacancy.id)).where(
+                Vacancy.user_id == user.id, Vacancy.ai_score.is_not(None))
+        )).scalar() or 0
+    lines = [
+        "📊 <b>Статистика</b>\n",
+        f"Откликов всего: <b>{total}</b>",
+        f"Сегодня: <b>{today}</b>",
         f"Автоотклик: <b>{'работает' if active else 'остановлен'}</b>",
-        parse_mode="HTML",
-    )
+    ]
+    if s.ai_score_enabled or scored_total:
+        lines.append(
+            f"\n🎯 Умный отбор (от {s.ai_score_min}%):\n"
+            f"• оценено ИИ: <b>{scored_total}</b>\n"
+            f"• отсеяно как слабые: <b>{filtered}</b>"
+        )
+    await message.answer("\n".join(lines), parse_mode="HTML")
 
 
 @router.message(F.text == BTN_SETTINGS)
@@ -236,6 +255,7 @@ async def btn_settings(message: Message, **kw):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✉️ Контакт для писем", callback_data="task:input:contact")],
         [InlineKeyboardButton(text="📨 Пересылка сообщений (2-й ТГ)", callback_data="ub:menu")],
+        [InlineKeyboardButton(text="🗑 Убрать отказы на hh", callback_data="acc:hide_rej")],
         [InlineKeyboardButton(text="➕ Подключить ещё аккаунт", callback_data="acc:add")],
         [InlineKeyboardButton(text="🚪 Выйти из аккаунта hh", callback_data="acc:logout")],
         [InlineKeyboardButton(text="💎 Тариф", callback_data="task:tariff")],
@@ -249,6 +269,41 @@ async def cb_acc_add(cb: CallbackQuery, **kw):
     await cb.message.answer(
         "Несколько hh-аккаунтов одновременно — функция расширенного тарифа (скоро). "
         "Сейчас можно переподключить текущий: /connect"
+    )
+
+
+@router.callback_query(F.data == "acc:hide_rej")
+async def cb_hide_rejections(cb: CallbackQuery, **kw):
+    from app.parsers.hh_user_client import HHUserClient
+    await cb.answer("Читаю отклики на hh...")
+    async with async_session() as session:
+        user = await _load(session, cb)
+        if not user.hh_connected or not user.hh_access_token:
+            await cb.message.answer("Сначала подключи hh: /connect")
+            return
+        client = HHUserClient(
+            access_token=user.hh_access_token,
+            refresh_token=user.hh_refresh_token or "",
+            resume_id=user.hh_resume_id,
+            expires_at=user.hh_token_expires.timestamp() if user.hh_token_expires else 0.0,
+        )
+    res = await client.hide_rejections()
+    if client.new_token:
+        import datetime
+        async with async_session() as session:
+            u = await _load(session, cb)
+            u.hh_access_token = client.new_token["access_token"]
+            u.hh_refresh_token = client.new_token["refresh_token"]
+            u.hh_token_expires = datetime.datetime.fromtimestamp(
+                client.new_token["expires_at"], tz=datetime.timezone.utc)
+            await session.commit()
+    if res.get("error"):
+        await cb.message.answer(f"⚠️ Не удалось убрать отказы: {res['error']}")
+        return
+    await cb.message.answer(
+        f"🗑 <b>Готово.</b> Скрыто отказов: <b>{res['hidden']}</b> "
+        f"(проверено откликов: {res['checked']}).",
+        parse_mode="HTML",
     )
 
 
