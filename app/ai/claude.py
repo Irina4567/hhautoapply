@@ -96,7 +96,9 @@ class ClaudeAI:
                 {"role": "user", "content": user_message},
             ],
         }
-        async with httpx.AsyncClient(timeout=60) as c:
+        # Прокси: явный ai_proxy, иначе tg_proxy (тот же SOCKS, что для Telegram).
+        proxy = settings.ai_proxy or (settings.tg_proxy if (settings.tg_proxy or "").startswith("socks5") else "")
+        async with httpx.AsyncClient(timeout=60, proxy=proxy or None) as c:
             r = await c.post(f"{settings.ai_base_url}/chat/completions", headers=headers, json=payload)
         r.raise_for_status()
         d = r.json()
@@ -198,13 +200,16 @@ class ClaudeAI:
         log.info("ai_cover_letter_generated", title=vacancy_title[:60])
         return text.strip(), inp_tok, out_tok
 
-    async def score_vacancy(self, vacancy_title: str, vacancy_description: str, resume: str) -> int:
-        """Оценка соответствия вакансии резюме, 0–100. При ошибке — 100
-        (не блокируем отклик, если ИИ недоступен)."""
+    async def score_vacancy(self, vacancy_title: str, vacancy_description: str, resume: str) -> int | None:
+        """Оценка соответствия вакансии резюме, 0–100. None — ИИ недоступен/не
+        дал число (вызывающий решает: при строгом отборе такую вакансию лучше
+        пропустить, а не откликаться вслепую)."""
         system = (
             "Ты помощник по поиску работы. Оцени, насколько вакансия подходит "
-            "кандидату по его резюме. Верни ТОЛЬКО число от 0 до 100 — процент "
-            "соответствия (навыки, роль, уровень). Без слов, без пояснений.\n\n"
+            "кандидату по его резюме. Учитывай профессию и роль: например для "
+            "бизнес/системного аналитика вакансии химика-аналитика, "
+            "бухгалтера-аналитика, лаборанта — НЕ подходят. Верни ТОЛЬКО число "
+            "от 0 до 100 — процент соответствия. Без слов, без пояснений.\n\n"
             f"Резюме кандидата:\n{resume[:4000]}"
         )
         user_msg = f"Вакансия: {vacancy_title}\n\nОписание:\n{(vacancy_description or '')[:2500]}"
@@ -212,10 +217,11 @@ class ClaudeAI:
             text, _, _ = await self._call(system, user_msg, max_tokens=800)
         except Exception as e:
             log.warning("ai_score_failed", error=str(e))
-            return 100
+            return None
         m = re.search(r"\d{1,3}", text or "")
         if not m:
-            return 100
+            log.warning("ai_score_no_number", raw=(text or "")[:80])
+            return None
         return max(0, min(100, int(m.group(0))))
 
     async def generate_reply(self, recruiter_message: str, vacancy_context: str = "", platform: str = "") -> tuple[str, int, int]:

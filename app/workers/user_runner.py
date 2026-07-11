@@ -155,6 +155,10 @@ async def run_user_cycle(user_id: int) -> int:
             desc = " ".join(x for x in (snip.get("responsibility"), snip.get("requirement")) if x)
             scored += 1
             score = await claude_ai.score_vacancy(title, desc, resume_text)
+            if score is None:
+                # ИИ недоступен — при включённом строгом отборе не откликаемся вслепую.
+                log.warning("user_score_unavailable_skip", user_id=user_id, vid=vid)
+                continue
             async with async_session() as session:
                 v = await session.get(Vacancy, vac_id)
                 if v:

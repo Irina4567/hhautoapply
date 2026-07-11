@@ -27,6 +27,7 @@ dependencies = [
     "aiohttp-socks>=0.8.0",
     "telethon>=1.36.0",
     "python-socks[asyncio]>=2.4.0",
+    "socksio>=1.0.0",
 ]
 
 [project.optional-dependencies]
