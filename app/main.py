@@ -115,8 +115,9 @@ async def main():
         userbot_manager.bind_bot(bot)
         asyncio.create_task(userbot_manager.start_all())
 
-        # Вебхук ЮMoney (если настроен кошелёк)
-        if settings.yoomoney_wallet and settings.yoomoney_secret:
+        # Вебхук оплаты (если настроен ЮMoney-кошелёк или ЮKassa-магазин)
+        if (settings.yoomoney_wallet and settings.yoomoney_secret) or (
+                settings.yookassa_shop_id and settings.yookassa_secret_key):
             from app.api.payment_webhook import create_payment_app
             pay_app = create_payment_app(bot)
             runner = web.AppRunner(pay_app)

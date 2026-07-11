@@ -24,7 +24,7 @@ from app.bot.media import send_photo_or_text
 from app.models.application import Application, ApplicationStatus
 from app.models.vacancy import Vacancy, VacancyStatus
 from app.models.user_settings import UserSettings
-from app.services.user_service import get_or_create_user
+from app.services.user_service import get_or_create_user, beta_slots
 
 log = structlog.get_logger()
 
@@ -173,11 +173,17 @@ async def cmd_start(message: Message, state: FSMContext, **kw):
                     Application.status == ApplicationStatus.SENT,
                     func.date(Application.created_at) == func.current_date())
             )).scalar() or 0
+            used, total = await beta_slots(session)
+            paid = user.is_paid
         status = "🟢 работает" if active else "⚪️ остановлен"
         kw = s.search_text or "⚠️ не задано"
+        left = max(0, total - used)
+        tariff = "💎 Полный доступ" if paid else "Бесплатный"
         await send_photo_or_text(
             message, "welcome",
             "👋 <b>С возвращением!</b>\n\n"
+            f"💎 Тариф: <b>{tariff}</b>\n"
+            f"🎟 Бета-доступ: занято <b>{used}/{total}</b>, осталось <b>{left}</b>\n\n"
             f"🤖 Автоотклик: <b>{status}</b>\n"
             f"🔑 Ключевые слова: <b>{kw}</b>\n"
             f"📊 Откликов сегодня: <b>{today}</b>\n\n"

@@ -53,11 +53,19 @@ class Settings(BaseSettings):
     # ЮMoney: номер кошелька и секрет HTTP-уведомлений (в настройках кошелька).
     yoomoney_wallet: str = ""
     yoomoney_secret: str = ""
+    # ЮKassa (магазин): shopId и секретный ключ из ЛК ЮKassa.
+    yookassa_shop_id: str = ""
+    yookassa_secret_key: str = ""
+    # Куда вернуть пользователя после оплаты (страница/бот).
+    yookassa_return_url: str = "https://t.me/"
     # Крипто-адреса для ручной оплаты (подтверждает админ).
     crypto_ton: str = ""
     crypto_usdt_trc20: str = ""
-    # Порт локального веб-сервера для вебхука ЮMoney.
+    # Порт локального веб-сервера для вебхука оплаты.
     payment_webhook_port: int = 8088
+
+    # Бета: первым N пользователям — полный доступ на subscription_days бесплатно.
+    beta_full_access_slots: int = 50
 
     # Database
     database_url: str = "sqlite+aiosqlite:///data/jobhunter.db"

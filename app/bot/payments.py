@@ -14,6 +14,7 @@ from aiogram.types import CallbackQuery, Message, InlineKeyboardMarkup, InlineKe
 from app.config import settings
 from app.database import async_session
 from app.services.payments import build_yoomoney_url, apply_payment
+from app.services import yookassa
 
 log = structlog.get_logger()
 
@@ -27,9 +28,18 @@ async def cb_pay_start(cb: CallbackQuery, **kw):
     lines = [f"💳 <b>Оплата расширенного тарифа</b>\n\n{price}₽ — {days} дней.\n"]
     buttons: list[list[InlineKeyboardButton]] = []
 
-    if settings.yoomoney_wallet:
+    paid_online = False
+    if yookassa.is_configured():
+        url = await yookassa.create_payment(
+            cb.from_user.id, price, "Расширенный тариф авто-откликов")
+        if url:
+            buttons.append([InlineKeyboardButton(text=f"Оплатить {price}₽ картой", url=url)])
+            paid_online = True
+    if not paid_online and settings.yoomoney_wallet:
         url = build_yoomoney_url(cb.from_user.id)
         buttons.append([InlineKeyboardButton(text=f"Оплатить {price}₽ картой (ЮMoney)", url=url)])
+        paid_online = True
+    if paid_online:
         lines.append("После оплаты тариф поднимется автоматически в течение минуты.")
     else:
         lines.append("Онлайн-оплата картой временно недоступна.")

@@ -64,6 +64,10 @@ class User(Base, TimestampMixin):
 
     @property
     def is_paid(self) -> bool:
+        # Админ — всегда полный доступ.
+        from app.config import settings
+        if settings.tg_admin_chat_id and str(self.telegram_id) == str(settings.tg_admin_chat_id):
+            return True
         if self.tier != "paid":
             return False
         if self.tier_until is None:
