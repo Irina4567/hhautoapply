@@ -26,6 +26,9 @@ class UserSettings(BaseModel):
     search_text: str = ""
     # Где искать: в названии вакансии/компании/описании.
     search_fields: list[str] = Field(default_factory=lambda: ["name"])
+    # Искать не только в названии, но и в описании вакансии (в разы больше
+    # вакансий; точность держит умный ИИ-отбор). По умолчанию включено.
+    search_in_description: bool = True
     # Регион(ы) — id областей hh (Москва=1, СПб=2, вся Россия=113).
     areas: list[int] = Field(default_factory=lambda: [1])
     # Слова-исключения (через запятую).
@@ -100,8 +103,7 @@ class UserSettings(BaseModel):
     def to_hh_params(self) -> dict:
         """Параметры поиска hh /vacancies БЕЗ text — фразу подставляет движок."""
         params: dict = {}
-        if self.search_fields:
-            params["search_field"] = self.search_fields
+        params["search_field"] = ["name", "description"] if self.search_in_description else ["name"]
         if self.areas:
             params["area"] = self.areas
         if self.excluded_text:

@@ -665,6 +665,9 @@ def _score_kb(s: UserSettings) -> InlineKeyboardMarkup:
            callback_data="task:toggle_score")],
         [b(text=f"🎚 Порог соответствия: от {s.ai_score_min}%",
            callback_data="task:input:ai_score_min")],
+        [b(text=f"🔎 Искать в описании: {'🟢 вкл' if s.search_in_description else '⚪️ выкл'}",
+           callback_data="task:toggle_desc")],
+        [b(text="♻️ Пересмотреть отсеянные", callback_data="task:reconsider")],
         [b(text="⬅️ Назад", callback_data="task:menu")],
     ])
 
@@ -675,10 +678,40 @@ async def _show_score(cb: CallbackQuery, s: UserSettings):
         "Перед откликом ИИ сравнивает вакансию с твоим резюме и ставит оценку "
         "соответствия 0–100%. Бот откликается только на вакансии с оценкой "
         f"<b>≥ {s.ai_score_min}%</b> — слабые совпадения пропускаются.\n\n"
-        "⚠️ Тратит чуть больше ИИ-запросов и времени, зато отклики точнее.\n"
-        "Порог выше = меньше откликов, но релевантнее."
+        "🔎 <b>Искать в описании</b> — искать не только по названию, но и в тексте "
+        "вакансии. Вакансий в разы больше; точность держит умный отбор. "
+        "Лучше держать вместе с включённым отбором.\n"
+        "♻️ <b>Пересмотреть отсеянные</b> — вернуть ранее отсеянные вакансии в очередь "
+        "(например если снизил порог)."
     )
     await cb.message.edit_text(text, reply_markup=_score_kb(s), parse_mode="HTML")
+
+
+@router.callback_query(F.data == "task:toggle_desc")
+async def cb_toggle_desc(cb: CallbackQuery, **kw):
+    async with async_session() as session:
+        user = await _load(session, cb)
+        s = user.get_settings()
+        s.search_in_description = not s.search_in_description
+        user.set_settings(s)
+        await session.commit()
+    await cb.message.edit_reply_markup(reply_markup=_score_kb(s))
+    await cb.answer("Поиск в описании включён" if s.search_in_description else "Только по названию")
+
+
+@router.callback_query(F.data == "task:reconsider")
+async def cb_reconsider(cb: CallbackQuery, **kw):
+    from sqlalchemy import update
+    async with async_session() as session:
+        user = await _load(session, cb)
+        res = await session.execute(
+            update(Vacancy)
+            .where(Vacancy.user_id == user.id, Vacancy.status == VacancyStatus.REJECTED)
+            .values(status=VacancyStatus.NEW, ai_score=None, ai_reason=None)
+        )
+        await session.commit()
+    n = res.rowcount or 0
+    await cb.answer(f"Возвращено в очередь: {n}", show_alert=True)
 
 
 @router.callback_query(F.data == "task:score")
