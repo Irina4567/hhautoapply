@@ -100,14 +100,23 @@ class UserSettings(BaseModel):
             return []
         return [p.strip() for p in re.split(r"[,/\n]+", raw) if p.strip()]
 
+    def excluded_words(self) -> list[str]:
+        """Слова-исключения (через запятую/слэш/перенос) в нижнем регистре.
+
+        Фильтруем на своей стороне: hh не понимает список исключений (запятую
+        трактует как фразу), поэтому отсев делаем сами по названию/описанию.
+        """
+        raw = (self.excluded_text or "").strip().lower()
+        if not raw:
+            return []
+        return [w.strip() for w in re.split(r"[,/\n]+", raw) if w.strip()]
+
     def to_hh_params(self) -> dict:
         """Параметры поиска hh /vacancies БЕЗ text — фразу подставляет движок."""
         params: dict = {}
         params["search_field"] = ["name", "description"] if self.search_in_description else ["name"]
         if self.areas:
             params["area"] = self.areas
-        if self.excluded_text:
-            params["excluded_text"] = self.excluded_text
         if self.work_format:
             params["work_format"] = self.work_format
         if self.schedule:

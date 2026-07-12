@@ -182,6 +182,7 @@ async def run_account_cycle(user_id: int, st, ctx: dict, phrases: list[str]) -> 
     )
     base_params = st.to_hh_params()
     phrases = phrases or [""]
+    excluded = st.excluded_words()
     scored = 0
     seen = 0
     stop = False
@@ -210,6 +211,14 @@ async def run_account_cycle(user_id: int, st, ctx: dict, phrases: list[str]) -> 
                     continue
                 title = item.get("name") or ""
                 url = (item.get("alternate_url") or f"https://hh.ru/vacancy/{vid}")
+
+                # Слова-исключения: отсеиваем по названию + сниппету (на своей стороне).
+                if excluded:
+                    snip = item.get("snippet") or {}
+                    blob = " ".join(str(x) for x in (
+                        title, snip.get("responsibility"), snip.get("requirement")) if x).lower()
+                    if any(w in blob for w in excluded):
+                        continue
 
                 async with async_session() as session:
                     # Дедуп в рамках этого аккаунта.
