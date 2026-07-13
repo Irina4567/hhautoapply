@@ -391,7 +391,6 @@ async def btn_settings(message: Message, **kw):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✉️ Контакт для писем", callback_data="task:input:contact")],
         [InlineKeyboardButton(text="📨 Пересылка сообщений (2-й ТГ)", callback_data="ub:menu")],
-        [InlineKeyboardButton(text="🗑 Убрать отказы на hh", callback_data="acc:hide_rej")],
         [InlineKeyboardButton(text="📄 Клонировать резюме", callback_data="acc:clone_resume")],
         [InlineKeyboardButton(text="🔗 Мои аккаунты", callback_data="acc:list")],
         [InlineKeyboardButton(text="🚪 Выйти из основного hh", callback_data="acc:logout")],
@@ -572,9 +571,12 @@ async def cb_clone_resume(cb: CallbackQuery, **kw):
     res = await client.clone_resume()
     if res.get("ok"):
         await cb.message.answer(
-            "📄 <b>Резюме клонировано.</b> Свежая копия позволяет откликаться "
-            "заново на вакансии, куда ты уже откликался. Опубликуй копию на hh, "
-            "если нужно — и укажи её при подключении/переподключении.",
+            "📄 <b>Резюме клонировано.</b> Свежая копия позволяет откликаться заново "
+            "на вакансии, куда ты уже откликался.\n\n"
+            "Чтобы бот применял именно копию — сделай её <b>основным</b> резюме на hh "
+            "(перемести вверх списка / опубликуй) и <b>переподключись</b> (🚪 выйти → "
+            "/connect): бот берёт резюме, которое подтягивает при входе. Выбор резюме "
+            "прямо в боте добавлю, если понадобится.",
             parse_mode="HTML",
         )
     else:
