@@ -352,14 +352,13 @@ async def btn_stats(message: Message, **kw):
 async def btn_settings(message: Message, **kw):
     async with async_session() as session:
         user = await _load(session, message)
-        connected = user.hh_connected
+        if not user.hh_connected:
+            await message.answer("🔗 hh.ru пока не подключён. Нажми /connect.")
+            return
         paid = user.is_paid
         resume_line = (user.resume_text.splitlines()[0] if user.resume_text else "")
         contact = (user.get_settings().contact or "").strip()
         extra = await _extra_accounts_count(session, user.id)
-    if not connected:
-        await message.answer("🔗 hh.ru пока не подключён. Нажми /connect.")
-        return
     text = (
         "⚙️ <b>Настройки</b>\n\n"
         f"🔗 Аккаунтов hh: <b>{1 + extra}</b>\n"
@@ -380,9 +379,13 @@ async def btn_settings(message: Message, **kw):
 
 async def _extra_accounts_count(session, user_id: int) -> int:
     from app.models.hh_account import HHAccount
-    return (await session.execute(
-        select(func.count(HHAccount.id)).where(HHAccount.user_id == user_id)
-    )).scalar() or 0
+    try:
+        return (await session.execute(
+            select(func.count(HHAccount.id)).where(HHAccount.user_id == user_id)
+        )).scalar() or 0
+    except Exception as e:
+        log.warning("extra_accounts_count_failed", error=str(e))
+        return 0
 
 
 async def _accounts_view(cb: CallbackQuery):

@@ -10,6 +10,7 @@ from aiogram.enums import ParseMode
 from app.config import settings
 from app.database import engine
 from app.models.base import Base
+import app.models  # noqa: F401 — регистрирует все модели в metadata до create_all
 from app.bot.handlers import router, set_scheduler
 from app.workers.scheduler import WorkerScheduler
 
