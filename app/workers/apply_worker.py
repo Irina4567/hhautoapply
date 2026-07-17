@@ -75,7 +75,7 @@ async def run_auto_apply(auto_mode: bool = False, min_score: float = 70):
     #  100→80→60→40→30→20→15→…), чтобы добить дневной лимит до 200.
     #  Ночь 22–9 — только высокоценные (score>=50): на них реагируем сразу,
     #  остальное ждёт утра.
-    #  score=0 (дисквалифицированные 1С/junior/qa/не-аналитик) не берём никогда.
+    #  score=0 (дисквалифицированные junior/qa/frontend/не по профилю) не берём никогда.
     from datetime import datetime as _dt
     from zoneinfo import ZoneInfo as _ZI
     _hour = _dt.now(_ZI("Europe/Moscow")).hour

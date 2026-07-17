@@ -72,7 +72,7 @@ class Settings(BaseSettings):
     # Контакты для подписи в письмах (email, tg и т.п.). В мультиюзере
     # берутся из профиля пользователя; здесь — для одиночного режима.
     contacts: str = ""
-    desired_position: str = "Бизнес/Системный аналитик (Middle)"
+    desired_position: str = "PHP-разработчик · Bitrix / Bitrix24 · Laravel"
     desired_salary_min: int = 200000
     desired_salary_max: int = 400000
 

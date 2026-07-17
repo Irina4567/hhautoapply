@@ -63,7 +63,7 @@ def _company_name(vacancy) -> str:
 async def cmd_start(message: Message, **kw):
     await message.answer(
         "👋 <b>Job Hunter Bot</b>\n\n"
-        "Автоматический поиск вакансий аналитика\n"
+        "Автоматический поиск вакансий PHP/Bitrix-разработчика\n"
         "Используй кнопки ниже 👇\n\n"
         "🌊 А ещё у меня есть <b>Volna</b>, CRM для фрилансеров и самозанятых прямо в Telegram. "
         "Клиенты, заказы и деньги без таблиц: t.me/volnabbot",

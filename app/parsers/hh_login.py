@@ -88,7 +88,7 @@ class OTPLoginSession:
         self.page.on("request", _on_req)
 
         try:
-            await self.page.goto(AUTHORIZE_URL, wait_until="load", timeout=30000)
+            await self.page.goto(AUTHORIZE_URL, wait_until="domcontentloaded", timeout=30000)
         except Exception as e:
             await self.cancel()
             return {"error": f"goto: {e}"}

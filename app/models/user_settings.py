@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 
 class UserSettings(BaseModel):
     # --- Поиск ---
-    # Ключевые слова/должность. Пусто = набор запросов по умолчанию (аналитик).
+    # Ключевые слова/должность. Пусто = набор запросов по умолчанию (PHP-разработчик).
     search_text: str = ""
     # Где искать: в названии вакансии/компании/описании.
     search_fields: list[str] = Field(default_factory=lambda: ["name"])

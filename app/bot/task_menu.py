@@ -55,7 +55,7 @@ def _summary(s: UserSettings) -> str:
     exp = ", ".join(EXPERIENCE[c] for c in s.experience) or "любой"
     emp = ", ".join(EMPLOYMENT[c] for c in s.employment) or "любая"
     return (
-        f"🔑 Ключевые слова: <b>{s.search_text or 'аналитик (по умолчанию)'}</b>\n"
+        f"🔑 Ключевые слова: <b>{s.search_text or 'PHP-разработчик (по умолчанию)'}</b>\n"
         f"📍 Регион: <b>{areas}</b>\n"
         f"💻 Формат: <b>{fmt}</b>\n"
         f"📈 Опыт: <b>{exp}</b>\n"
@@ -212,10 +212,10 @@ async def cb_tog(cb: CallbackQuery, **kw):
 
 # ── Ввод значений (FSM) ──
 _PROMPTS = {
-    "search_text": "Пришли ключевые слова для поиска (например: <code>системный аналитик</code>). Пусто = по умолчанию.",
+    "search_text": "Пришли ключевые слова для поиска (например: <code>PHP разработчик Bitrix</code>). Пусто = по умолчанию.",
     "areas": "Пришли город (например: <code>Москва</code>, <code>СПб</code>, <code>вся Россия</code>).",
     "salary_min": "Пришли минимальную зарплату числом (например: <code>200000</code>). 0 = без ограничения.",
-    "excluded_text": "Пришли слова-исключения через запятую (например: <code>1С, junior</code>).",
+    "excluded_text": "Пришли слова-исключения через запятую (например: <code>junior, стажёр</code>).",
     "daily_limit": "Пришли лимит откликов в день числом.",
     "window": "Пришли окно откликов в формате <code>9-21</code> (часы МСК).",
 }

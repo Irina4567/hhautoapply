@@ -13,16 +13,19 @@ import re
 
 # Must-have title patterns (any one match is enough)
 TITLE_POSITIVES = [
-    r"\bаналит(ик|ика)\b",
-    r"\bba\b",
-    r"\bsa\b",
-    r"business.?analyst",
-    r"system.?analyst",
-    r"бизнес.?аналит",
-    r"системн.?аналит",
-    r"продукт.?аналит",
-    r"product.?analyst",
-    r"фулстек.?аналит",
+    r"php",
+    r"bitrix",
+    r"битрикс",
+    r"laravel",
+    r"backend.?(developer|разработчик|программист)",
+    r"back.?end",
+    r"fullstack.?(developer|разработчик|программист)",
+    r"фулстек.?(разработчик|программист)",
+    r"веб.?разработчик",
+    r"web.?developer",
+    r"разработчик\b",
+    r"программист",
+    r"developer\b",
 ]
 
 # Минимальная зарплата: вакансии с указанной ЗП ниже отсеиваем.
@@ -37,15 +40,13 @@ BRAND_NEGATIVES = [
 
 # Hard negatives — instant disqualify
 HARD_NEGATIVES = [
-    r"\b1с\b",  # 1С аналитики — отдельная вселенная
-    r"\b1c\b",
-    r"backend\s+(developer|разработчик)",
-    r"frontend\s+(developer|разработчик)",
+    r"frontend\s+(developer|разработчик)",  # чистый frontend без backend — не её профиль
     r"data\s+engineer",
     r"ml.?engineer",
     r"devops",
     r"qa\b",
     r"тестировщик",
+    r"1с.?программист",  # разработка ВНУТРИ 1С (не Bitrix) — другой стек
     r"стажёр",
     r"стажер",
     r"ученик",
@@ -55,16 +56,13 @@ HARD_NEGATIVES = [
 
 # Stack keywords — each gives +5 (capped at +40)
 STACK_KEYWORDS = [
-    "rest api", "rest", "api", "bpmn", "uml",
-    "sql", "postgres", "postgresql", "mysql",
-    "erp", "crm", "интеграц", "микросервис",
-    "agile", "scrum", "kanban",
-    "swagger", "openapi",
-    "use case", "user story", "user stories",
-    "jira", "confluence",
-    "postman", "soap",
-    "android", "ios", "мобильн",
-    "figma",
+    "php", "bitrix", "битрикс", "bitrix24", "laravel",
+    "rest api", "rest", "api", "orm", "mvc", "composer",
+    "sql", "mysql", "postgres", "postgresql",
+    "erp", "crm", "интеграц", "микросервис", "e-commerce", "ecommerce",
+    "javascript", "jquery", "html", "css", "nuxt", "vue",
+    "git", "gitflow", "ci/cd",
+    "jira", "figma",
 ]
 
 # Seniority signals
@@ -103,7 +101,7 @@ def analyze_vacancy(
     if not title_match:
         return {
             "score": 0,
-            "reason": "Title doesn't match analyst positions",
+            "reason": "Title doesn't match PHP/backend developer positions",
             "is_relevant": False,
             "seniority": "unknown",
             "red_flags": ["title_mismatch"],

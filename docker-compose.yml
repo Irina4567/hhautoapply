@@ -12,6 +12,7 @@ services:
       redis:
         condition: service_healthy
     volumes:
+      - app_data:/app/data
       - browser_data:/app/data/browser_sessions
       - ./configs:/app/configs:ro
       - ./logs:/app/logs
@@ -49,6 +50,7 @@ services:
 volumes:
   pgdata:
   browser_data:
+  app_data:
 
 networks:
   jobhunter:
