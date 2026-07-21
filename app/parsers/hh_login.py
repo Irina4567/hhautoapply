@@ -42,6 +42,8 @@ SEL_LOGIN = 'input[data-qa="login-input-username"]'
 SEL_CODE_CONTAINER = 'div[data-qa="account-login-code-input"]'
 SEL_PIN = 'input[data-qa="magritte-pincode-input-field"]'
 SEL_CAPTCHA = 'img[data-qa="account-captcha-picture"]'
+SEL_CAPTCHA_INPUT = 'input[data-qa="account-captcha-input"]'
+SEL_CAPTCHA_ERROR = 'div[data-qa="account-captcha-error"]'
 
 
 class OTPLoginSession:
@@ -112,17 +114,50 @@ class OTPLoginSession:
         except Exception:
             pass
 
-        # Ждём поле ввода кода
+        return await self._wait_for_code_field()
+
+    async def _wait_for_code_field(self) -> dict:
+        """Ждём поле ввода кода (после телефона или после пройденной капчи)."""
         try:
             await self.page.wait_for_selector(SEL_CODE_CONTAINER, timeout=15000)
         except Exception as e:
-            if self.code_future.done():
+            if self.code_future and self.code_future.done():
                 # hh сразу отдал код (например, уже доверенное устройство)
                 return {"status": "code_sent"}
             await self.cancel()
             return {"error": f"no_code_field: {e}"}
 
         return {"status": "code_sent"}
+
+    async def submit_captcha(self, text: str) -> dict:
+        """Ввести текст с картинки капчи.
+
+        return {"status": "code_sent"} | {"status": "captcha", ...} | {"error": ...}
+
+        При неверном тексте hh сам подставляет новую картинку в ту же форму —
+        просто перезаписываем CAPTCHA_FILE и возвращаем status=captcha, чтобы
+        вызывающий прислал её пользователю ещё раз.
+        """
+        if not self.page:
+            return {"error": "no_session"}
+        try:
+            await self.page.fill(SEL_CAPTCHA_INPUT, text)
+            await self.page.press(SEL_CAPTCHA_INPUT, "Enter")
+        except Exception as e:
+            return {"error": f"fill_captcha: {e}"}
+
+        # Неверный текст — hh покажет ошибку и новую картинку в той же форме
+        try:
+            await self.page.wait_for_selector(SEL_CAPTCHA_ERROR, timeout=4000, state="visible")
+            cap = await self.page.query_selector(SEL_CAPTCHA)
+            if cap:
+                CAPTCHA_FILE.parent.mkdir(parents=True, exist_ok=True)
+                CAPTCHA_FILE.write_bytes(await cap.screenshot())
+            return {"status": "captcha", "error": "wrong_captcha"}
+        except Exception:
+            pass  # ошибки нет — капча, похоже, пройдена
+
+        return await self._wait_for_code_field()
 
     async def submit_code(self, code: str) -> dict:
         """Ввести код, забрать OAuth-код, сохранить токен и cookies."""

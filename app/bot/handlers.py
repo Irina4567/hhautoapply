@@ -907,6 +907,23 @@ async def cb_cancel_apply(callback: CallbackQuery, **kw):
 class LoginSG(StatesGroup):
     phone = State()
     code = State()
+    captcha = State()
+
+
+LOGIN_CAPTCHA_MAX_ATTEMPTS = 5
+
+
+async def _send_login_captcha(message: Message) -> None:
+    from pathlib import Path
+    from aiogram.types import FSInputFile
+    p = Path("data/hh_login_captcha.png")
+    if p.exists():
+        await message.answer_photo(
+            FSInputFile(p),
+            caption="hh просит подтвердить, что ты не робот. Пришли текст с картинки одним сообщением.",
+        )
+    else:
+        await message.answer("hh просит капчу, но картинку не удалось получить. Попробуй /login позже.")
 
 
 @router.message(Command("login"))
@@ -954,24 +971,59 @@ async def login_phone(message: Message, state: FSMContext, **kw):
         await state.set_state(LoginSG.code)
         await message.answer("📩 hh отправил код (SMS или почта). Пришли его сюда одним сообщением.")
     elif res.get("status") == "captcha":
-        from pathlib import Path
-        from aiogram.types import FSInputFile
-        p = Path("data/hh_login_captcha.png")
-        await sess.cancel()
-        await state.clear()
-        if p.exists():
-            await message.answer_photo(
-                FSInputFile(p),
-                caption="hh просит капчу — автоматом сейчас не пройти. Попробуй /login чуть позже.",
-            )
-        else:
-            await message.answer("hh просит капчу. Попробуй /login позже.")
+        set_session(message.chat.id, sess)
+        await state.set_state(LoginSG.captcha)
+        await state.update_data(captcha_attempts=0)
+        await _send_login_captcha(message)
     else:
         await sess.cancel()
         await state.clear()
         await message.answer(
             f"❌ Не удалось начать вход: {res.get('error')}\nПопробуй /login ещё раз."
         )
+
+
+@router.message(LoginSG.captcha)
+@admin_only
+async def login_captcha(message: Message, state: FSMContext, **kw):
+    from app.parsers.hh_login import get_session, drop_session
+    text = (message.text or "").strip()
+    if not text:
+        await message.answer("Пришли текст с картинки одним сообщением, или /cancel.")
+        return
+    sess = get_session(message.chat.id)
+    if not sess:
+        await state.clear()
+        await message.answer("Сессия входа потеряна. Начни заново: /login")
+        return
+
+    data = await state.get_data()
+    attempts = data.get("captcha_attempts", 0) + 1
+
+    await message.answer("⏳ Проверяю капчу...")
+    res = await sess.submit_captcha(text)
+
+    if res.get("status") == "code_sent":
+        await state.set_state(LoginSG.code)
+        await message.answer("✅ Капча пройдена. hh отправил код. Пришли его сюда одним сообщением.")
+        return
+
+    if res.get("status") == "captcha":
+        if attempts >= LOGIN_CAPTCHA_MAX_ATTEMPTS:
+            await drop_session(message.chat.id)
+            await state.clear()
+            await message.answer(
+                "Не получилось разгадать капчу за несколько попыток. Попробуй /login чуть позже."
+            )
+            return
+        await state.update_data(captcha_attempts=attempts)
+        await message.answer("❌ Неверный текст, hh показал новую картинку. Попробуй ещё раз.")
+        await _send_login_captcha(message)
+        return
+
+    await drop_session(message.chat.id)
+    await state.clear()
+    await message.answer(f"❌ Не удалось продолжить вход: {res.get('error')}\nПопробуй /login заново.")
 
 
 @router.message(LoginSG.code)

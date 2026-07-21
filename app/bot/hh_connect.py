@@ -11,13 +11,14 @@
 from __future__ import annotations
 
 import datetime
+from pathlib import Path
 
 import structlog
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message
+from aiogram.types import FSInputFile, Message
 
 from app.database import async_session
 from app.parsers.hh_login import OTPLoginSession, get_session, set_session, drop_session
@@ -28,10 +29,14 @@ log = structlog.get_logger()
 
 router = Router()
 
+CAPTCHA_FILE = Path("data/hh_login_captcha.png")
+CAPTCHA_MAX_ATTEMPTS = 5
+
 
 class ConnectSG(StatesGroup):
     phone = State()
     code = State()
+    captcha = State()
 
 
 async def _is_cancel(message: Message, state: FSMContext) -> bool:
@@ -73,15 +78,67 @@ async def connect_phone(message: Message, state: FSMContext, **kw):
         await state.set_state(ConnectSG.code)
         await message.answer("📩 hh отправил код. Пришли его сюда одним сообщением.")
     elif res.get("status") == "captcha":
-        await sess.cancel()
-        await state.clear()
-        await message.answer(
-            "hh просит капчу — сейчас автоматически не пройти. Попробуй /connect чуть позже."
-        )
+        set_session(message.chat.id, sess)
+        await state.set_state(ConnectSG.captcha)
+        await state.update_data(captcha_attempts=0)
+        await _send_captcha(message)
     else:
         await sess.cancel()
         await state.clear()
         await message.answer(f"❌ Не удалось начать вход: {res.get('error')}\nПопробуй /connect ещё раз.")
+
+
+async def _send_captcha(message: Message) -> None:
+    if CAPTCHA_FILE.exists():
+        await message.answer_photo(
+            FSInputFile(CAPTCHA_FILE),
+            caption="hh просит подтвердить, что вы не робот. Пришли текст с картинки одним сообщением.",
+        )
+    else:
+        await message.answer("hh просит капчу, но картинку не удалось получить. Попробуй /connect позже.")
+
+
+@router.message(ConnectSG.captcha)
+async def connect_captcha(message: Message, state: FSMContext, **kw):
+    if await _is_cancel(message, state):
+        return
+    text = (message.text or "").strip()
+    if not text:
+        await message.answer("Пришли текст с картинки одним сообщением, или /cancel.")
+        return
+    sess = get_session(message.chat.id)
+    if not sess:
+        await state.clear()
+        await message.answer("Сессия входа потеряна. Начни заново: /connect")
+        return
+
+    data = await state.get_data()
+    attempts = data.get("captcha_attempts", 0) + 1
+
+    await message.answer("⏳ Проверяю капчу...")
+    res = await sess.submit_captcha(text)
+
+    if res.get("status") == "code_sent":
+        await state.set_state(ConnectSG.code)
+        await message.answer("✅ Капча пройдена. hh отправил код. Пришли его сюда одним сообщением.")
+        return
+
+    if res.get("status") == "captcha":
+        if attempts >= CAPTCHA_MAX_ATTEMPTS:
+            await drop_session(message.chat.id)
+            await state.clear()
+            await message.answer(
+                "Не получилось разгадать капчу за несколько попыток. Попробуй /connect чуть позже."
+            )
+            return
+        await state.update_data(captcha_attempts=attempts)
+        await message.answer("❌ Неверный текст, hh показал новую картинку. Попробуй ещё раз.")
+        await _send_captcha(message)
+        return
+
+    await drop_session(message.chat.id)
+    await state.clear()
+    await message.answer(f"❌ Не удалось продолжить вход: {res.get('error')}\nПопробуй /connect заново.")
 
 
 @router.message(ConnectSG.code)
